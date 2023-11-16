@@ -31,20 +31,21 @@ CGO_ENABLED=0 GOOS=linux go build -o api_transformer main.go
 
 ```bash
 # set the endpoint
-export DEEPL_ENDPOINT='your_deepl_api_endpoint'
+export DEEPLX_ENDPOINT=your_deeplx_api_url/translate
 # set the endpoint name
+export DEEPLX_NAME=your_deeplx_name
 ./main
 ```
 
-Another choice is to use the Docker: `nerdneils/deepx_adapter_for_hcfy:latest`
+Another choice is to use the Docker: `nerdneils/deeplx_adapter_for_hcfy:latest`
 
 ```
-docker run -it -p 9911:9911 -e "DEEPLX_ENDPOINT=you_deeplx.com/translate" -e "DEEPLX_NAME=your_deeplx_name"
+docker run -it -p 9911:9911 -e "DEEPLX_ENDPOINT=you_deeplx.com/translate" -e "DEEPLX_NAME=your_deeplx_name" nerdneils/deeplx_adapter_for_hcfy:latest
 ```
 
 ### Usage
 
-Send a POST request to `/translate` with the Hcfy formatted JSON. The service will process the request, call the DeepL API, and return the translation in the Hcfy format.
+Send a POST request to `/` with the Hcfy formatted JSON. The service will process the request, call the DeepL API, and return the translation in the Hcfy format.
 
 ## Contributing
 Contributions are welcome. Please open an issue first to discuss what you would like to change or add.

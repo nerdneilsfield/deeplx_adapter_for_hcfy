@@ -21,8 +21,8 @@ on:
       - master
 
 env:
-  IMAGE_NAME_GITHUB: nerdneilsfield/deepx_adapter_for_hcfy
-  IMAGE_NAME_DOCKERHUB: nerdneils/deepx_adapter_for_hcfy
+  IMAGE_NAME_GITHUB: nerdneilsfield/deeplx_adapter_for_hcfy
+  IMAGE_NAME_DOCKERHUB: nerdneils/deeplx_adapter_for_hcfy
 
 jobs:
   build-and-push:
