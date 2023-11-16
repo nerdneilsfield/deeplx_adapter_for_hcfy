@@ -42,17 +42,21 @@ var HcfyToDeeplMap map[string]string
 var hcfyToDeeplMap = map[string]string{}
 
 var targetEndpoint string
+var tagetName string
 
-type DeepLRequest struct {
+type DeepLXRequest struct {
 	Text       string `json:"text"`
 	SourceLang string `json:"source_lang"` // default is auto
 	TragetLang string `json:"target_lang"` // ZH
 }
 
-type DeelLResponse struct {
-	Code int32  `json:"code"`
-	Msg  string `json:"msg"`
-	Data string `json:"data"`
+type DeepLXResponse struct {
+	Code         int32    `json:"code"`
+	Msg          string   `json:"msg"`
+	Data         string   `json:"data"`
+	SourceLang   string   `json:"source_lang"` // default is auto
+	TragetLang   string   `json:"target_lang"` // ZH
+	Alternatives []string `json:"alternatives"`
 }
 
 type HcfyRequest struct {
@@ -69,21 +73,21 @@ type HcfyResponse struct {
 	Result []string `json:"result"`
 }
 
-func HcfyRequestToDeepLRequest(hcfyRequest HcfyRequest) DeepLRequest {
+func HcfyRequestToDeepLRequest(hcfyRequest HcfyRequest) DeepLXRequest {
 	var originTragetLan string
 	if len(hcfyRequest.Destination) > 1 && hcfyRequest.Destination[0] != "中文(简体)" {
 		originTragetLan = hcfyRequest.Destination[0]
 	} else {
 		originTragetLan = hcfyRequest.Destination[0]
 	}
-	return DeepLRequest{
+	return DeepLXRequest{
 		Text:       hcfyRequest.Text,
 		SourceLang: "auto",
 		TragetLang: hcfyToDeeplMap[originTragetLan],
 	}
 }
 
-func DeeplResponseToHcfyResponse(deeplResponse DeelLResponse, request HcfyRequest) HcfyResponse {
+func DeeplResponseToHcfyResponse(deeplResponse DeepLXResponse, request HcfyRequest) HcfyResponse {
 	var originTragetLan string
 	if len(request.Destination) > 1 && request.Destination[0] != "中文(简体)" {
 		originTragetLan = request.Destination[1]
@@ -136,7 +140,15 @@ func HcfyToDeeplHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if hcfyRequest.Name != tagetName {
+		log.Printf("Wrong name: %s\n", hcfyRequest.Name)
+		http.Error(w, "Wrong name", http.StatusBadRequest)
+		return
+	}
+	// log.Printf("HcfyToDeeplHandler: %v\n", hcfyRequest)
+
 	deeplRequest := HcfyRequestToDeepLRequest(hcfyRequest)
+	log.Printf("deeplRequest: %v\n", deeplRequest)
 	deeplRequestJson, err := json.Marshal(deeplRequest)
 	if err != nil {
 		log.Printf("Error marshalling DeepL request: %v", err)
@@ -152,14 +164,24 @@ func HcfyToDeeplHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	var deeplResponse DeelLResponse
-	if err := json.NewDecoder(resp.Body).Decode(&deeplResponse); err != nil {
-		log.Printf("Error decoding DeepL response: %v", err)
-		http.Error(w, "Error processing response", http.StatusInternalServerError)
+	var deeplResponse DeepLXResponse
+	requestBody, err = io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Error reading DeepL response: %v", err)
+		http.Error(w, "Error reading response", http.StatusInternalServerError)
 		return
 	}
 
+	if err = json.Unmarshal(requestBody, &deeplResponse); err != nil {
+		log.Printf("Error decoding DeepL response: %v", err)
+		http.Error(w, "Error decoding response", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("deeplResponse: %v\n", deeplResponse)
+
 	hcfyResponse := DeeplResponseToHcfyResponse(deeplResponse, hcfyRequest)
+	// log.Printf("hcfyResponse: %v\n", hcfyResponse)
 	hcfyResponseJson, err := json.Marshal(hcfyResponse)
 	if err != nil {
 		log.Printf("Error marshalling Hcfy response: %v", err)
@@ -184,11 +206,18 @@ func main() {
 		log.Fatalln("DEEPLX_ENDPOINT is not set")
 		os.Exit(1)
 	}
+
+	if os.Getenv("DEEPLX_NAME") != "" {
+		tagetName = os.Getenv("DEEPLX_NAME")
+	} else {
+		log.Fatalln("DEEPLX_NAME is not set")
+		os.Exit(1)
+	}
 	log.Printf("targetEndpoint: %s", targetEndpoint)
 	log.Println("start server.....")
 
-	http.HandleFunc("/translate", HcfyToDeeplHandler)
-	http.HandleFunc("/", HelloWorldHandler)
+	http.HandleFunc("/", HcfyToDeeplHandler)
+	// http.HandleFunc("/", HelloWorldHandler)
 
-	http.ListenAndServe("0.0.0.0:9911", nil)
+	http.ListenAndServe("127.0.0.1:9911", nil)
 }
