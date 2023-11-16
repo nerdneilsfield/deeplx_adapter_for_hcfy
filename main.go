@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -104,44 +106,71 @@ func DeeplResponseToHcfyResponse(deeplResponse DeelLResponse, request HcfyReques
 	}
 }
 
-func HcfyToDeeplHanlder(w http.ResponseWriter, req *http.Request) {
-	if req.Method == "POST" {
-		decoder := json.NewDecoder(req.Body)
-		var hcfyRequest HcfyRequest
-		err := decoder.Decode(&hcfyRequest)
-		log.Println("Receive request: ", len(hcfyRequest.Text))
-		if err != nil {
-			log.Println("decode failed {}", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		deeplRequest := HcfyRequestToDeepLRequest(hcfyRequest)
-		deeplRequestJson, _ := json.Marshal(deeplRequest)
-		// log.Println(string(deeplRequestJson))
-		resp, err := http.Post(targetEndpoint, "application/json", strings.NewReader(string(deeplRequestJson)))
-		if err != nil {
-			log.Println("request deepl api failed {}", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
-		decoder = json.NewDecoder(resp.Body)
-		var deeplResponse DeelLResponse
-		err = decoder.Decode(&deeplResponse)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		hcfyResponse := DeeplResponseToHcfyResponse(deeplResponse, hcfyRequest)
-		hcfyResponseJson, _ := json.Marshal(hcfyResponse)
-		log.Println("Return the transfomated text with len {}", len(deeplResponse.Data))
-		// log.Println(string(hcfyResponseJson))
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(hcfyResponseJson)
+func HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("HelloWorldHandler from: ", r.RemoteAddr)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Only GET method is accepted", http.StatusMethodNotAllowed)
 		return
-	} else {
-		http.Error(w, "Invalid request", http.StatusInternalServerError)
+	}
+	w.Write([]byte("Hello World"))
+}
+
+func HcfyToDeeplHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("HcfyToDeeplHandler from: ", r.RemoteAddr)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is accepted", http.StatusMethodNotAllowed)
 		return
+	}
+
+	var hcfyRequest HcfyRequest
+	requestBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("Error reading request body: %v", err)
+		http.Error(w, "Error reading request", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+	if err := json.Unmarshal(requestBody, &hcfyRequest); err != nil {
+		log.Printf("Error decoding request: %v", err)
+		http.Error(w, "Error decoding request", http.StatusBadRequest)
+		return
+	}
+
+	deeplRequest := HcfyRequestToDeepLRequest(hcfyRequest)
+	deeplRequestJson, err := json.Marshal(deeplRequest)
+	if err != nil {
+		log.Printf("Error marshalling DeepL request: %v", err)
+		http.Error(w, "Error processing request", http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := http.DefaultClient.Post(targetEndpoint, "application/json", bytes.NewBuffer(deeplRequestJson))
+	if err != nil {
+		log.Printf("Error requesting DeepL API: %v", err)
+		http.Error(w, "Error calling translation service", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	var deeplResponse DeelLResponse
+	if err := json.NewDecoder(resp.Body).Decode(&deeplResponse); err != nil {
+		log.Printf("Error decoding DeepL response: %v", err)
+		http.Error(w, "Error processing response", http.StatusInternalServerError)
+		return
+	}
+
+	hcfyResponse := DeeplResponseToHcfyResponse(deeplResponse, hcfyRequest)
+	hcfyResponseJson, err := json.Marshal(hcfyResponse)
+	if err != nil {
+		log.Printf("Error marshalling Hcfy response: %v", err)
+		http.Error(w, "Error processing response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(hcfyResponseJson); err != nil {
+		log.Printf("Error writing response: %v", err)
+		// It's too late to change the HTTP status code here since the header has been sent
 	}
 }
 
@@ -149,13 +178,17 @@ func main() {
 	for k, v := range deeplToHcfyMap {
 		hcfyToDeeplMap[v] = k
 	}
-	if os.Getenv("DEEPL_ENDPOINT") != "" {
-		targetEndpoint = os.Getenv("DEEPL_ENDPOINT")
+	if os.Getenv("DEEPLX_ENDPOINT") != "" {
+		targetEndpoint = os.Getenv("DEEPLX_ENDPOINT")
+	} else {
+		log.Fatalln("DEEPLX_ENDPOINT is not set")
+		os.Exit(1)
 	}
 	log.Printf("targetEndpoint: %s", targetEndpoint)
 	log.Println("start server.....")
 
-	http.HandleFunc("/translate", HcfyToDeeplHanlder)
+	http.HandleFunc("/translate", HcfyToDeeplHandler)
+	http.HandleFunc("/", HelloWorldHandler)
 
-	http.ListenAndServe("0.0.0.0:8080", nil)
+	http.ListenAndServe("0.0.0.0:9911", nil)
 }
