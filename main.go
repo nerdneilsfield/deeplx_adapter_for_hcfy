@@ -219,5 +219,5 @@ func main() {
 	http.HandleFunc("/", HcfyToDeeplHandler)
 	// http.HandleFunc("/", HelloWorldHandler)
 
-	http.ListenAndServe("127.0.0.1:9911", nil)
+	http.ListenAndServe("0.0.0.0:9911", nil)
 }
